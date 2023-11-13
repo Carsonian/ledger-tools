@@ -96,7 +96,7 @@ def clean_ledger_file(ledger_file):
 
 def main():
 
-    csv_path = "/home/carson/Downloads/MoneyWallet_export_2023-11-06_22-08-14.csv"
+    csv_path = "/home/carson/Downloads/MoneyWallet_export_2023-11-13_18-02-32.csv"
 
     tmp_clean_csv = clean_csv(csv_path)
     run_ledger_convert(tmp_clean_csv, csv_path)

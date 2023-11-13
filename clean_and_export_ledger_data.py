@@ -86,13 +86,20 @@ def read_days_toml(days_toml):
     """Read the toml file to a list, fix place names, export to sqlite"""
 
     with open(days_toml, "rb") as f:
-        nights_data = tomllib.load(f)['Nights']
+        toml_file = tomllib.load(f)
+        city_data = toml_file['City']
+        country_data = toml_file['Country']
 
     # Replace - with a space in city names
-    nights_data = {k.replace('-', ' '): v for (k, v) in nights_data.items()}
+    city_data = {k.replace('-', ' '): v for (k, v) in city_data.items()}
+    country_data = {k.replace('-', ' '): v for (k, v) in country_data.items()}
 
     # Turn into a df
-    nights_df = pd.DataFrame(nights_data.items(), columns=['City', 'Nights'])
+    city_df = pd.DataFrame(city_data.items(), columns=['City', 'Nights'])
+    country_df = pd.DataFrame(country_data.items(), columns=['Country', 'Nights'])
+
+    # Combine into nights_df
+    nights_df = pd.concat([city_df, country_df])
 
     # Set nights to numeric
     nights_df['Nights'] = pd.to_numeric(nights_df['Nights'])
