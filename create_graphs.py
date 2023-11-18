@@ -1,7 +1,9 @@
 import pandas as pd
 import sqlite3
 import plotly.express as px
+import plotly.graph_objects as go
 from dash import Dash, html, dash_table, dcc, callback, Output, Input
+from datetime import datetime
 
 
 def get_sqlite_data(database_name):
@@ -19,9 +21,6 @@ def transform_data(trans_df, nights_df, per_day, city_or_country):
     # Filter out revalued and adjustment transactions
     trans_df = trans_df[~trans_df['Category'].str.contains("<Revalued>|<Adjustment>")]
 
-    # Filter out international transactions
-    trans_df = trans_df[~trans_df[city_or_country].str.contains("International", na=False)]
-
     # Group by city and category and find sum of amounts
     aggregated = trans_df.groupby([city_or_country, 'Category']) \
                          .agg({'Amount': ['sum']}) \
@@ -32,13 +31,12 @@ def transform_data(trans_df, nights_df, per_day, city_or_country):
     if per_day:
         # Create a column of nights spent
         aggregated = pd.merge(aggregated, nights_df, on=city_or_country, how='left')
-        
+
         # Divide the amount column by the nights column
         aggregated['Amount'] = aggregated['Amount']/aggregated['Nights']
 
         # Round again
         aggregated['Amount'] = aggregated['Amount'].round(decimals=2)
-        
 
     # Sort the categories by a manual list -----------------------------
     try:
@@ -70,10 +68,14 @@ def transform_data(trans_df, nights_df, per_day, city_or_country):
 
 def make_bar_graph(df, cities_order, use_trip_order, use_per_day, city_or_country):
 
+    # Filter out international transactions
+    df = df[~df[city_or_country].str.contains("International", na=False)]
+
     # Create the bar chart  ----------------------
     fig = px.bar(df,
                  x=city_or_country, y=["Amount"],
                  color='Category',
+                 color_discrete_map=category_color_dict,
                  category_orders={"Category": 'total_descending'},
                  )
 
@@ -87,9 +89,9 @@ def make_bar_graph(df, cities_order, use_trip_order, use_per_day, city_or_countr
     # If per day, add constant line at $65 per day and new title
     if use_per_day:
         fig.add_hline(y=65)
-        fig.update_layout(title="Per Day Expenses by City.")
+        fig.update_layout(title="Per Day Expenses by City")
     else:
-        fig.update_layout(title="Total Expenses by City.")
+        fig.update_layout(title="Total Expenses by City")
 
     # Style the chart
     fig.update_layout(font={'size': 18})
@@ -174,7 +176,109 @@ def make_total_graphs(city_or_country, df):
     return fig
 
 
+def make_category_bar(df):
+    """Make bar chart to show total amount spent per category"""
+
+    # Filter out revalued and adjustment transactions
+    df = df[~df['Category'].str.contains("<Revalued>|<Adjustment>")]
+
+    # Group by city and category and find sum of amounts
+    df = df.groupby('Category').sum('Amount').reset_index()
+
+    # Sort by sum descending
+    df = df.sort_values(by=['Amount'], ascending=False)
+
+    fig = px.bar(df,
+                 x='Category', y=["Amount"],
+                 color='Category',
+                 color_discrete_map=category_color_dict,
+                 )
+
+    fig.update_layout(title="Total Expenses by Category")
+
+    # Style the chart
+    fig.update_layout(font={'size': 18})
+    return fig
+
+
+def make_gauge(df):
+    """Make a gauge chart of the total spent"""
+
+    df['Date'] = pd.to_datetime(df['Date'])
+
+    df = df.groupby(df['Date'].dt.strftime('%y-%m-%d'))['Amount'].sum().reset_index()
+
+    df["cum_sum"] = df["Amount"].cumsum()
+    df = df.sort_index()
+
+    # Get current total
+    current_total = df["cum_sum"].iloc[-1]
+
+    # Find total days since trip start date
+    most_recent_date = datetime.strptime(df["Date"].iloc[-1], '%y-%m-%d')
+    trip_start_date = datetime.strptime('2023-06-21', '%Y-%m-%d')
+    days_so_far = (most_recent_date - trip_start_date).days
+    months_so_far = (most_recent_date.month - trip_start_date.month)
+
+    day_expenses = current_total / days_so_far
+    month_expenses = current_total / months_so_far
+
+    # Make reference expenses of 65 dollars a day
+    reference_expenses = 65*days_so_far
+
+    # Create the total expenses indicator
+    fig = go.Figure(go.Indicator(
+        mode = "number+delta",
+        value = current_total,
+        number = {"prefix": "$"},
+        delta = {"reference": reference_expenses, "prefix": "$", },
+        title = {"text": "Total Expenses"},
+        domain = {'x': [0, 0], 'y': [0.5, 1]}))
+
+    # Add per month 
+    fig.add_trace(go.Indicator(
+    mode = "number",
+    value = month_expenses,
+    number = {"prefix": "$", 'font': {'size': 65}},
+    title = {"text":
+             f"Per Month<br><span style='font-size:1em;color:gray'>({months_so_far} Months)</span><br><span style='font-size:1em;color:gray'>"},
+    domain = {'x': [0.7, 1], 'y': [0.1, 0.3]}))
+
+    # Add per day
+    fig.add_trace(go.Indicator(
+    mode = "number",
+    value = day_expenses,
+    number = {"prefix": "$", 'font': {'size': 65}},
+    title = {"text":
+             f"Per Day<br><span style='font-size:1em;color:gray'>({days_so_far} Days)</span><br><span style='font-size:1em;color:gray'>"},
+    domain = {'x': [0.4, 1], 'y': [0.1, 0.3]}))
+        
+    # Add line graph of running total
+    # pop the rows before june so it looks better
+    after_june_df = df[(df['Date'] > '23-06-21')]
+    fig.add_trace(go.Scatter(y = after_june_df['cum_sum'], x=after_june_df['Date']))
+
+    return fig
+
+
+category_color_dict = {'Accomodation': '#3366CC', 
+                       'Food & Drink': '#DC3912',
+                       'Activities': '#FF9900',
+                       'Transportation:Plane': '#109618',
+                       'Transportation:Boat':'#0099C6',
+                       'Transportation:Bus':'#B82E2E',
+                       'Transportation:Train':'#EECA3B',
+                       'Transportation:City Transit':'#DD4477',
+                       'Untracked Cash': '#66AA00',
+                       'ATM Fees': '#990099',
+                       'Purchases': '#316395',
+                       'Misc': '#8C564B'
+                       }
+
+
 def main():
+
+    print(px.colors.qualitative.G10)
 
     database_name = 'expenses.db'
     trans_df, nights_df = get_sqlite_data(database_name)
@@ -197,6 +301,7 @@ def main():
     # Get list of cities in trip order
     cities_trip_order = nights_df['City'].to_list()
     cities_trip_order = [i for i in cities_trip_order if i is not None]
+    cities_trip_order.remove('International')
 
     # Get list of countries in trip order
     country_trip_order = nights_df['Country'].to_list()
@@ -211,6 +316,10 @@ def main():
 
     total_chart = make_total_graphs('Country', country_totals_df)
 
+    cat_bar_fig = make_category_bar(trans_df)
+
+    gauge_chart = make_gauge(trans_df)
+
     # Dash app ############################################
 
     app = Dash(__name__)
@@ -221,6 +330,12 @@ def main():
         html.Div(children='Asia Trip Expenses Report',
                  style={'textAlign': 'center', 'color': 'black', 'fontSize': 30}),
         html.Hr(),
+
+        # Gauge Chart
+        html.Div(className='row', children=[
+            dcc.Graph(figure=gauge_chart, id='gauge_fig',
+                      style={'height': '90vh', 'fontSize': 16}),
+        ]),
 
         # Section containing the order and total selectors
         html.Div(className='row', style={'text-align': 'center'}, children=[
@@ -256,6 +371,12 @@ def main():
         # Bar chart
         html.Div(className='row', children=[
             dcc.Graph(figure=bar_fig, id='bar_fig',
+                      style={'height': '90vh', 'fontSize': 16}),
+        ]),
+
+        # Category Bar chart
+        html.Div(className='row', children=[
+            dcc.Graph(figure=cat_bar_fig, id='cat_bar_fig',
                       style={'height': '90vh', 'fontSize': 16}),
         ]),
 
