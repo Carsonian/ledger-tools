@@ -11,16 +11,17 @@ def get_ledger_csv(ledger_file, output_path):
     """Get a csv file of all ledger expenses transactions and clean it."""
 
     # Run the ledger csv command with the format string specifying output
-    format_string_csv = ''' ' %(quoted(date))␟ %(quoted(payee))␟ %(quoted(display_account))␟ %(quoted(quantity(scrub(display_amount))))␟ %(quoted(join(note | xact.note)))\n' '''
+    format_string_csv = ''' ' %(quoted(date))␟ %(quoted(payee))␟ %(quoted(display_account))␟ %(quoted(commodity(scrub(display_amount))))␟ %(quoted(quantity(scrub(display_amount))))␟ %(quoted(join(note | xact.note)))\n' '''
 
-    report_cmd = r'ledger -f /home/carson/Files/accounting/asia-trip.ledger csv -X $ ^Expenses'
+    report_cmd = r'ledger -f /home/carson/Files/accounting/asia-trip.ledger csv ^Expenses'
+    # -X $ ^Expenses
 
     report_cmd = report_cmd + ' --csv-format ' + format_string_csv
 
     # Run the command and turn the output into a df
     csv_output = subprocess.check_output(report_cmd, shell=True).decode('utf-8')
     transaction_df = pd.read_csv(StringIO(csv_output), sep='␟', header=None, engine='python')
-    transaction_df.columns = ['Date', 'Payee', 'Category', 'Amount', 'metadata']
+    transaction_df.columns = ['Date', 'Payee', 'Category', 'Currency', 'Amount', 'metadata']
 
     # Trim quotes off both ends of all columns
     transaction_df[transaction_df.columns] = transaction_df.apply(lambda x: x.str.strip())
@@ -31,6 +32,7 @@ def get_ledger_csv(ledger_file, output_path):
     transaction_df['metadata'] = transaction_df['metadata'].str.replace('\\n', '\n')
 
     metadata_df = pd.DataFrame(columns=['Note', 'Country', 'City'])
+    print(transaction_df['metadata'])
     metadata_df[['Note', 'Country', 'City']] = transaction_df['metadata'].str.split('\n', expand=True)
 
     transaction_df = transaction_df.drop('metadata', axis=1)
@@ -80,6 +82,27 @@ def get_ledger_csv(ledger_file, output_path):
     transaction_df['Date'] = pd.to_datetime(transaction_df['Date'])
     transaction_df['Amount'] = pd.to_numeric(transaction_df['Amount'])
 
+    # Changes for importing to moneywallet
+    transaction_df['Currency'] = transaction_df['Currency'].str.replace("$","CAD")
+    
+    transaction_df['Category'] = transaction_df['Category'].str.replace('Transportation:', '')    
+
+    transaction_df['Amount'] *= -1
+
+    #transaction_df['Date'] = pd.to_datetime(transaction_df['Date'])
+    transaction_df['Date'] = transaction_df['Date'].dt.strftime('%m-%d-%Y %H:%M:%S')
+    
+    transaction_df = transaction_df.rename(
+        columns={'Currency': 'currency',
+                 'Category': 'category', 'Date': 'datetime',
+                 'Amount': 'money', 'Payee': 'description',
+                 'City': 'place', 'Country': 'event', 'Note': 'note'})
+
+    transaction_df['wallet'] = 'importtest'
+
+    transaction_df = transaction_df[['wallet', 'currency', 'category', 'datetime',
+                                     'money', 'description', 'event', 'place', 'note']]
+
     return transaction_df
 
 def read_days_toml(days_toml):
@@ -104,6 +127,9 @@ def read_days_toml(days_toml):
     # Set nights to numeric
     nights_df['Nights'] = pd.to_numeric(nights_df['Nights'])
 
+    # Create order column
+    nights_df = nights_df.rename_axis('Order').reset_index()
+
     return nights_df
 
 
@@ -114,16 +140,19 @@ def main():
     csv_output = '/home/carson/Files/expenses.csv'
 
     df = get_ledger_csv(ledger_file, csv_output)
-    # Export to sqlite
-    sqliteConnection = sqlite3.connect('expenses.db')
-    df.to_sql('ledger_expenses', sqliteConnection,
-              if_exists="replace", index=False)
 
-    nights_df = read_days_toml(days_toml)
-    # Export to sqlite
-    sqliteConnection = sqlite3.connect('expenses.db')
-    nights_df.to_sql('city_nights', sqliteConnection,
-                     if_exists="replace", index=False)
+    df.to_csv(csv_output, index=False)
+    
+    # # Export to sqlite
+    # sqliteConnection = sqlite3.connect('expenses.db')
+    # df.to_sql('ledger_expenses', sqliteConnection,
+    #           if_exists="replace", index=False)
+
+    # nights_df = read_days_toml(days_toml)
+    # # Export to sqlite
+    # sqliteConnection = sqlite3.connect('expenses.db')
+    # nights_df.to_sql('city_nights', sqliteConnection,
+    #                  if_exists="replace", index=False)
 
 
 main()
