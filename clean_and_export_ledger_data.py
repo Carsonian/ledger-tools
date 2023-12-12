@@ -82,27 +82,6 @@ def get_ledger_csv(ledger_file, output_path):
     transaction_df['Date'] = pd.to_datetime(transaction_df['Date'])
     transaction_df['Amount'] = pd.to_numeric(transaction_df['Amount'])
 
-    # Changes for importing to moneywallet
-    transaction_df['Currency'] = transaction_df['Currency'].str.replace("$","CAD")
-    
-    transaction_df['Category'] = transaction_df['Category'].str.replace('Transportation:', '')    
-
-    transaction_df['Amount'] *= -1
-
-    #transaction_df['Date'] = pd.to_datetime(transaction_df['Date'])
-    transaction_df['Date'] = transaction_df['Date'].dt.strftime('%m-%d-%Y %H:%M:%S')
-    
-    transaction_df = transaction_df.rename(
-        columns={'Currency': 'currency',
-                 'Category': 'category', 'Date': 'datetime',
-                 'Amount': 'money', 'Payee': 'description',
-                 'City': 'place', 'Country': 'event', 'Note': 'note'})
-
-    transaction_df['wallet'] = 'importtest'
-
-    transaction_df = transaction_df[['wallet', 'currency', 'category', 'datetime',
-                                     'money', 'description', 'event', 'place', 'note']]
-
     return transaction_df
 
 def read_days_toml(days_toml):
@@ -141,18 +120,18 @@ def main():
 
     df = get_ledger_csv(ledger_file, csv_output)
 
-    df.to_csv(csv_output, index=False)
+    #df.to_csv(csv_output, index=False)
     
-    # # Export to sqlite
-    # sqliteConnection = sqlite3.connect('expenses.db')
-    # df.to_sql('ledger_expenses', sqliteConnection,
-    #           if_exists="replace", index=False)
+    # Export to sqlite
+    sqliteConnection = sqlite3.connect('expenses.db')
+    df.to_sql('ledger_expenses', sqliteConnection,
+              if_exists="replace", index=False)
 
-    # nights_df = read_days_toml(days_toml)
-    # # Export to sqlite
-    # sqliteConnection = sqlite3.connect('expenses.db')
-    # nights_df.to_sql('city_nights', sqliteConnection,
-    #                  if_exists="replace", index=False)
+    nights_df = read_days_toml(days_toml)
+    # Export to sqlite
+    sqliteConnection = sqlite3.connect('expenses.db')
+    nights_df.to_sql('city_nights', sqliteConnection,
+                     if_exists="replace", index=False)
 
 
 main()
