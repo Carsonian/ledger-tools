@@ -4,6 +4,7 @@ import sqlite3
 import tomllib
 from io import StringIO
 import subprocess
+import os 
 # import argparse
 
 
@@ -11,17 +12,16 @@ def get_ledger_csv(ledger_file, output_path):
     """Get a csv file of all ledger expenses transactions and clean it."""
 
     # Run the ledger csv command with the format string specifying output
-    format_string_csv = ''' ' %(quoted(date))␟ %(quoted(payee))␟ %(quoted(display_account))␟ %(quoted(commodity(scrub(display_amount))))␟ %(quoted(quantity(scrub(display_amount))))␟ %(quoted(join(note | xact.note)))\n' '''
+    format_string_csv = ''' ' %(quoted(date))␟ %(quoted(payee))␟ %(quoted(display_account))␟ %(quoted(quantity(scrub(display_amount))))␟ %(quoted(join(note | xact.note)))\n' '''
 
-    report_cmd = r'ledger -f /home/carson/Files/accounting/asia-trip.ledger csv ^Expenses'
-    # -X $ ^Expenses
+    report_cmd = r'ledger -f /home/carson/Files/accounting/asia-trip.ledger csv -X $ ^Expenses'
 
     report_cmd = report_cmd + ' --csv-format ' + format_string_csv
 
     # Run the command and turn the output into a df
     csv_output = subprocess.check_output(report_cmd, shell=True).decode('utf-8')
     transaction_df = pd.read_csv(StringIO(csv_output), sep='␟', header=None, engine='python')
-    transaction_df.columns = ['Date', 'Payee', 'Category', 'Currency', 'Amount', 'metadata']
+    transaction_df.columns = ['Date', 'Payee', 'Category', 'Amount', 'metadata']
 
     # Trim quotes off both ends of all columns
     transaction_df[transaction_df.columns] = transaction_df.apply(lambda x: x.str.strip())
@@ -32,7 +32,6 @@ def get_ledger_csv(ledger_file, output_path):
     transaction_df['metadata'] = transaction_df['metadata'].str.replace('\\n', '\n')
 
     metadata_df = pd.DataFrame(columns=['Note', 'Country', 'City'])
-    print(transaction_df['metadata'])
     metadata_df[['Note', 'Country', 'City']] = transaction_df['metadata'].str.split('\n', expand=True)
 
     transaction_df = transaction_df.drop('metadata', axis=1)
@@ -120,16 +119,20 @@ def main():
 
     df = get_ledger_csv(ledger_file, csv_output)
 
-    #df.to_csv(csv_output, index=False)
+    df.to_csv(csv_output, index=False)
+
+    # Get path of directory python file is in and make path for sqlite database
+    dir_path = os.getcwd()
+    sqlite_path = os.path.join(dir_path, 'expenses.db')
     
     # Export to sqlite
-    sqliteConnection = sqlite3.connect('expenses.db')
+    sqliteConnection = sqlite3.connect(sqlite_path)
     df.to_sql('ledger_expenses', sqliteConnection,
               if_exists="replace", index=False)
 
     nights_df = read_days_toml(days_toml)
     # Export to sqlite
-    sqliteConnection = sqlite3.connect('expenses.db')
+    sqliteConnection = sqlite3.connect(sqlite_path)
     nights_df.to_sql('city_nights', sqliteConnection,
                      if_exists="replace", index=False)
 

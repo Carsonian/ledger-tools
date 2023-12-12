@@ -278,10 +278,11 @@ category_color_dict = {'Accomodation': '#3366CC',
 
 def main():
 
-    print(px.colors.qualitative.G10)
+    # Get path of directory python file is in and make path for sqlite database
+    dir_path = os.getcwd()
+    sqlite_path = os.path.join(dir_path, 'expenses.db')
 
-    database_name = 'expenses.db'
-    trans_df, nights_df = get_sqlite_data(database_name)
+    trans_df, nights_df = get_sqlite_data(sqlite_path)
 
     trans_df['Amount'] = trans_df['Amount'].round(decimals=2)
 
