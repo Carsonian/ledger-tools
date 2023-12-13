@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import altair as alt
 
 import os
 import sqlite3
@@ -102,6 +103,61 @@ def make_bar_graph(df, cities_order, use_trip_order, use_per_day, city_or_countr
     return fig
 
 
+def make_alt_bar(df, cities_order, use_trip_order, use_per_day, city_or_country):
+
+    # Filter out international transactions
+    df = df[~df[city_or_country].str.contains("International", na=False)]
+
+    # # Create the bar chart  ----------------------
+      #            color_discrete_map=category_color_dict,
+      #            category_orders={"Category": 'total_descending'},
+      #            )
+
+    
+    # If per day, add constant line at $65 per day and new title
+    # if use_per_day:
+    #     fig.add_hline(y=65)
+    #     fig.update_layout(title="Per Day Expenses by City")
+    # else:
+    #     fig.update_layout(title="Total Expenses by City")
+
+    # # Style the chart
+    # fig.update_layout(font={'size': 18})
+    # fig.update_layout(yaxis_tickprefix='$')
+    # fig.update_xaxes(tickangle=315)
+
+    # Make a bar chart with the data
+    bar_chart = alt.Chart(df
+    ).transform_joinaggregate(     # Make a city total value 
+    city_total ='sum(Amount)',
+    groupby=[city_or_country]
+    ).mark_bar().encode(  # Create the chart encodings
+    #x=city_or_country,
+    y='Amount',
+    color='Category',
+    tooltip=[
+        alt.Tooltip('City', title="City:  "),
+        alt.Tooltip('city_total:Q', title="Total: "),
+        alt.Tooltip('Category', title="Category: "),
+        alt.Tooltip('Amount', title="Amount: "),
+    ]
+    )
+
+    # If trip order, sort by the trip order
+    if use_trip_order:
+        bar_chart = bar_chart.encode(
+            alt.X(city_or_country).sort(cities_order)
+            )
+    else:
+        # Sort in descending order
+        bar_chart = bar_chart.encode(
+            alt.X(city_or_country).sort('descending')
+            )
+    
+
+    return bar_chart
+
+
 def main():
 
     # Get path of directory python file is in and make path for sqlite database
@@ -135,20 +191,22 @@ def main():
     country_trip_order = [i for i in country_trip_order if i is not None]
 
     ## Add a select box for choosing the chart type
-    per_day_bar = st.selectbox('Per Day or Totals', ['Per Day', 'Totals'])
+    per_day_select = st.selectbox('Per Day or Totals', ['Per Day', 'Totals'])
 
     ## Create the chart
-    if per_day_bar == 'Per Day':
-        bar_fig = make_bar_graph(city_per_day_df, cities_trip_order,
+    if per_day_select == 'Per Day':
+        bar_chart = make_alt_bar(city_per_day_df, cities_trip_order,
                                  use_trip_order=True, use_per_day=True,
                                  city_or_country='City')
-    elif per_day_bar == 'Totals':
-        bar_fig = make_bar_graph(city_totals_df, cities_trip_order,
+    elif per_day_select == 'Totals':
+        bar_chart = make_alt_bar(city_totals_df, cities_trip_order,
                                  use_trip_order=True, use_per_day=False,
                                  city_or_country='City')
 
     ## Display the chart
-    st.plotly_chart(bar_fig, use_container_width=True)
+    #st.plotly_chart(bar_fig, use_container_width=True)
+    #bar_chart = make_alt_bar(city_per_day_df)
+    st.altair_chart(bar_chart, use_container_width=True)
 
     #st.bar_chart(data=city_per_day_df, x='City', y='Amount', color='Category', width=0, height=0, use_container_width=True)
 
